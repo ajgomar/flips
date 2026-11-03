@@ -218,13 +218,13 @@ const curW=()=>S.watch.find(x=>x.id===WID);
 function wStats(w){
   const o=w.obs||[],sold=o.filter(x=>x.status==='sprzedane'&&n(x.final)>0),gone=o.filter(x=>x.status==='zniknęło'),act=o.filter(x=>x.status==='aktywne');
   const ds=sold.filter(x=>x.listed&&x.ended).map(x=>days(x.listed,x.ended));
-  const dc=sold.filter(x=>n(x.ask)>0).map(x=>(n(x.ask)-n(x.final))/n(x.ask)*100);
+  const dc=sold.filter(x=>n(x.ask0||x.ask)>0).map(x=>(n(x.ask0||x.ask)-n(x.final))/n(x.ask0||x.ask)*100);
   const fin=sold.length+gone.length,sp=sold.map(x=>n(x.final));
   const srt=[...sold].sort((a,b)=>(a.ended||'').localeCompare(b.ended||''));
   let trend=null;
   if(srt.length>=4){const h=srt.length>>1,a=median(srt.slice(0,h).map(x=>n(x.final))),b=median(srt.slice(srt.length-h).map(x=>n(x.final)));trend=a?(b-a)/a*100:0}
   const av=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
-  return{n:o.length,sold,gone,act,sp,med:median(sp),avgD:av(ds),disc:av(dc),st:fin?sold.length/fin*100:null,trend,min:sp.length?Math.min(...sp):0,max:sp.length?Math.max(...sp):0};
+  return{n:o.length,chg:av(sold.map(x=>(x.hist||[]).length)),sold,gone,act,sp,med:median(sp),avgD:av(ds),disc:av(dc),st:fin?sold.length/fin*100:null,trend,min:sp.length?Math.min(...sp):0,max:sp.length?Math.max(...sp):0};
 }
 function vBaza(){
   if(WID){const w=curW();if(w)return vWatch(w);WID=null}
@@ -242,9 +242,9 @@ function vWatch(w){
   const tip=s.sold.length<3?`Masz ${s.sold.length} sprzedanych obserwacji. Zbierz ich co najmniej 5-8, żeby oceny były wiarygodne.`:`Typowa cena sprzedaży to ${pln(s.med)} (zakres ${pln(s.min)} do ${pln(s.max)}). Rozsądna cena wystawienia: ${pln(s.med*1.1)}.`+(s.disc!=null?` Kupujący schodzą średnio ${s.disc.toFixed(0)}% z ceny wywoławczej.`:'');
   const gt=(f,h)=>{const m={};w.obs.forEach(x=>{const k=f(x)||'brak';(m[k]=m[k]||[]).push(x)});
    return `<div class='tw'><table><tr><th>${h}</th><th>Obs.</th><th>Mediana wyst.</th><th>Mediana sprzed.</th><th>Śr. dni</th></tr>${Object.entries(m).map(([k,a])=>{const so=a.filter(x=>x.status==='sprzedane'&&n(x.final)>0),d=so.filter(x=>x.listed&&x.ended).map(x=>days(x.listed,x.ended)),ak=a.map(x=>n(x.ask)).filter(x=>x>0);return `<tr><td>${esc(k)}</td><td>${a.length}</td><td>${ak.length?pln(median(ak)):'–'}</td><td>${so.length?pln(median(so.map(x=>n(x.final)))):'–'}</td><td>${d.length?(d.reduce((p,q)=>p+q,0)/d.length).toFixed(0):'–'}</td></tr>`}).join('')}</table></div>`};
-  const row=x=>`<div class='it'><div class='row'><b>${pln(n(x.ask))}</b><span class='tag'>${esc(x.platform)}</span><span class='tag'>${esc(x.cond)}</span><span class='tag'>${esc(x.status)}</span><span class='sp'></span>${x.status==='sprzedane'?`<b class='ok'>sprzedane za ${pln(n(x.final))}</b>`:''}</div>
+  const row=x=>`<div class='it'><div class='row'><b>${pln(n(x.ask))}</b>${(x.hist&&x.hist.length)?`<span class='mu'>(początkowo ${pln(n(x.ask0))}, zmian ceny: ${x.hist.length})</span>`:''}<span class='tag'>${esc(x.platform)}</span><span class='tag'>${esc(x.cond)}</span><span class='tag'>${esc(x.status)}</span><span class='sp'></span>${x.status==='sprzedane'?`<b class='ok'>sprzedane za ${pln(n(x.final))}</b>`:''}</div>
    <div class='mu'>wystawione ${esc(x.listed||'(brak daty)')}${x.ended?`, zakończone ${esc(x.ended)}`:''}${x.listed&&x.ended?` (${days(x.listed,x.ended)} dni)`:x.status==='aktywne'&&x.listed?` (${days(x.listed,today())} dni na rynku)`:''}${x.note?`, ${esc(x.note)}`:''}</div>
-   <div class='row' style='margin-top:8px'>${x.status==='aktywne'?`<input id='f_${x.id}' inputmode='decimal' placeholder='cena końcowa' style='width:130px'><button class='btn s' data-i='${x.id}' onclick='obsSold(this.dataset.i)'>Sprzedane</button><button class='btn g s' data-i='${x.id}' onclick='obsGone(this.dataset.i)'>Zniknęło</button>`:''}<button class='btn g s' data-i='${x.id}' onclick='obsDel(this.dataset.i)'>Usuń</button></div></div>`;
+   <div class='row' style='margin-top:8px'>${x.status==='aktywne'?`<input id='p_${x.id}' inputmode='decimal' placeholder='nowa cena' style='width:110px'><button class='btn g s' data-i='${x.id}' onclick='obsPrice(this.dataset.i)'>Zmień cenę</button><input id='f_${x.id}' inputmode='decimal' placeholder='inna cena sprzedaży' style='width:150px'><button class='btn s' data-i='${x.id}' onclick='obsSold(this.dataset.i)'>Sprzedało się za ${n(x.ask)} zł</button><button class='btn g s' data-i='${x.id}' onclick='obsGone(this.dataset.i)'>Zniknęło</button>`:''}${x.status!=='aktywne'?`<button class='btn g s' data-i='${x.id}' onclick='obsUndo(this.dataset.i)'>Cofnij (wróć do aktywnych)</button>`:''}<button class='btn g s' data-i='${x.id}' onclick='obsDel(this.dataset.i)'>Usuń</button></div></div>`;
   const pl=[...new Set(sources().concat(['Allegro','Inne']))],obs=[...w.obs].sort((a,b)=>(b.listed||'').localeCompare(a.listed||''));
   return `<div class='card'><div class='row'><button class='btn g s' onclick='backW()'>Wróć do bazy</button><h2 style='margin:0'>${esc(w.name)}</h2>${w.cat?`<span class='tag'>${esc(w.cat)}</span>`:''}<span class='sp'></span><button class='btn g s' data-i='${w.id}' onclick='delW(this.dataset.i)'>Usuń przedmiot</button></div>${w.note?`<p class='mu' style='margin:8px 0 0'>${esc(w.note)}</p>`:''}</div>
   <div class='card'><h2>Wiedza o przedmiocie</h2><div class='grid'>
@@ -254,10 +254,12 @@ function vWatch(w){
    ${stat('Śr. czas do sprzedaży',s.avgD==null?'–':s.avgD.toFixed(0)+' dni')}
    ${stat('Skuteczność sprzedaży',s.st==null?'–':s.st.toFixed(0)+'%')}
    ${stat('Popyt',dem[0],dem[1])}
+   ${stat('Śr. zmian ceny przed sprzedażą',s.chg==null?'–':s.chg.toFixed(1))}
    ${stat('Trend cen',s.trend==null?'min. 4 sprzedane':(s.trend>0?'+':'')+s.trend.toFixed(0)+'%')}</div>
    <p style='margin:12px 0 0'>${tip}</p>
    <div class='row' style='margin-top:10px'><button class='btn' onclick='useCalc()' ${s.sp.length?'':'disabled'}>Użyj cen w zakładce Przed zakupem</button></div></div>
   ${w.obs.length?`<div class='card'><h2>Wg stanu</h2>${gt(x=>x.cond,'Stan')}</div><div class='card'><h2>Wg platformy</h2>${gt(x=>x.platform,'Platforma')}</div>`:''}
+  ${s.sold.length?`<div class='card'><h2>Historia sprzedaży</h2><div class='tw'><table><tr><th>Sprzedano</th><th>Platforma</th><th>Stan</th><th>Cena początkowa</th><th>Cena sprzedaży</th><th>Dni</th><th>Zmiany ceny</th></tr>${[...s.sold].sort((a,b)=>(b.ended||'').localeCompare(a.ended||'')).map(x=>`<tr><td>${esc(x.ended||'–')}</td><td>${esc(x.platform)}</td><td>${esc(x.cond)}</td><td>${pln(n(x.ask0||x.ask))}</td><td class='ok'>${pln(n(x.final))}</td><td>${x.listed&&x.ended?days(x.listed,x.ended):'–'}</td><td>${(x.hist||[]).length}</td></tr>`).join('')}</table></div></div>`:''}
   <div class='card'><h2>Dodaj obserwację</h2><div class='f'>
    <div><label>Platforma</label><select id='o_pl'>${pl.map(p=>`<option>${esc(p)}</option>`).join('')}</select></div>
    <div><label>Stan</label><select id='o_cond'>${CONDS.map(c=>`<option ${c==='dobry'?'selected':''}>${c}</option>`).join('')}</select></div>
@@ -273,8 +275,10 @@ function addProd(){const nm=$('#w_name').value.trim();if(!nm){$('#w_name').focus
 function openW(id){WID=id;render()}
 function backW(){WID=null;render()}
 function delW(id){if(!confirm('Usunąć przedmiot i wszystkie jego obserwacje?'))return;S.watch=S.watch.filter(w=>w.id!==id);WID=null;save();render()}
-function addObs(){const w=curW(),ask=n($('#o_ask').value);if(!ask){$('#o_ask').focus();return}const fin=n($('#o_fin').value);w.obs.push({id:'o'+Date.now(),platform:$('#o_pl').value,cond:$('#o_cond').value,ask,listed:$('#o_list').value,final:fin,ended:fin?($('#o_end').value||today()):'',status:fin?'sprzedane':'aktywne',note:$('#o_note').value.trim()});save();render()}
-function obsSold(id){const x=curW().obs.find(o=>o.id===id),v=n($('#f_'+id).value);if(!v){$('#f_'+id).focus();return}x.final=v;x.ended=today();x.status='sprzedane';save();render()}
+function addObs(){const w=curW(),ask=n($('#o_ask').value);if(!ask){$('#o_ask').focus();return}const fin=n($('#o_fin').value);w.obs.push({id:'o'+Date.now(),platform:$('#o_pl').value,cond:$('#o_cond').value,ask,ask0:ask,hist:[],listed:$('#o_list').value,final:fin,ended:fin?($('#o_end').value||today()):'',status:fin?'sprzedane':'aktywne',note:$('#o_note').value.trim()});save();render()}
+function obsSold(id){const x=curW().obs.find(o=>o.id===id),v=n($('#f_'+id).value)||n(x.ask);x.final=v;x.ended=today();x.status='sprzedane';save();render()}
+function obsPrice(id){const x=curW().obs.find(o=>o.id===id),v=n($('#p_'+id).value);if(!v){$('#p_'+id).focus();return}if(!x.ask0)x.ask0=n(x.ask);x.hist=x.hist||[];x.hist.push({d:today(),p:n(x.ask)});x.ask=v;save();render()}
+function obsUndo(id){const x=curW().obs.find(o=>o.id===id);x.status='aktywne';x.final=0;x.ended='';save();render()}
 function obsGone(id){const x=curW().obs.find(o=>o.id===id);x.status='zniknęło';x.ended=today();save();render()}
 function obsDel(id){const w=curW();w.obs=w.obs.filter(o=>o.id!==id);save();render()}
 function useCalc(){const w=curW();PRE=wStats(w).sp.join(' ');PRENAME=w.name;tab='kalk';render();PRE='';PRENAME=''}
