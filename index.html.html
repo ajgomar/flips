@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flip Tracker</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{--bg:#edf0f3;--card:#fff;--tx:#14202b;--mu:#5d6b78;--bd:#d6dce2;--ac:#1d4ed8;--acx:#fff;--ok:#15803d;--bad:#b91c1c;--warn:#b45309;--soft:#f4f6f8;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f161d;--card:#18212a;--tx:#e6ebf0;--mu:#92a0ad;--bd:#2b3743;--ac:#6ea0ff;--acx:#0b1220;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24;--soft:#1e2933;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f161d;--card:#18212a;--tx:#e6ebf0;--mu:#92a0ad;--bd:#2b3743;--ac:#6ea0ff;--acx:#0b1220;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24;--soft:#1e2933;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+main{max-width:920px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 12px;font-weight:600;letter-spacing:-.01em}
+h2{font-size:16px;margin:0 0 10px;font-weight:600}
+nav{display:flex;gap:4px;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:4px;margin-bottom:14px;overflow-x:auto}
+nav button{flex:1;white-space:nowrap;border:0;background:none;color:var(--mu);font:inherit;font-weight:500;padding:8px 12px;border-radius:7px;cursor:pointer}
+nav button.on{background:var(--ac);color:var(--acx)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:12px}
+.grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.stat{background:var(--soft);border-radius:8px;padding:10px 12px}
+.stat b{display:block;font-size:20px;font-weight:600}
+.mu{color:var(--mu);font-size:13px}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+label{display:block;font-size:13px;color:var(--mu);margin-bottom:3px}
+input,select,textarea{width:100%;font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:7px;padding:8px 10px}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+.f{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));align-items:end}
+.btn{border:0;background:var(--ac);color:var(--acx);font:inherit;font-weight:500;padding:9px 14px;border-radius:7px;cursor:pointer}
+.btn.g{background:var(--soft);color:var(--tx);border:1px solid var(--bd)}
+.btn.s{padding:6px 10px;font-size:13px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sp{flex:1}
+.tag{font-size:12px;border:1px solid var(--bd);border-radius:20px;padding:1px 8px;color:var(--mu)}
+.bar{height:10px;background:var(--soft);border-radius:6px;overflow:hidden;margin:8px 0 4px}
+.bar i{display:block;height:100%;background:var(--ok)}
+.it{padding:12px 0;border-top:1px solid var(--bd)}.it:first-child{border-top:0}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+td,th{text-align:left;padding:7px 8px;border-top:1px solid var(--bd);font-weight:400}
+th{color:var(--mu);font-size:13px}
+.verdict{font-size:18px;font-weight:600;margin:6px 0}
+@media (prefers-reduced-motion:no-preference){.bar i{transition:width .4s}}
+</style>
+</head>
+<body>
+<main>
+<h1>Flip Tracker</h1>
+<nav id="nav"></nav>
+<div id="view"></div>
+</main>
+<script>
+const KEY='fliptracker_v1';
+const DEF={eur:4.25,limit:10813.5,margin:30,stale:21,fee:0,sources:'OLX, Vinted, Kleinanzeigen, Inne'};
+let S={items:[],watch:[],set:{...DEF}},tab='panel';
+try{const r=localStorage.getItem(KEY);if(r){const p=JSON.parse(r);S.items=p.items||[];S.watch=p.watch||[];S.set={...DEF,...(p.set||{})}}}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const $=s=>document.querySelector(s);
+const n=v=>parseFloat(String(v==null?'':v).replace(/\s/g,'').replace(',','.'))||0;
+const pln=v=>v.toLocaleString('pl-PL',{minimumFractionDigits:2,maximumFractionDigits:2})+' zł';
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const today=()=>new Date().toISOString().slice(0,10);
+const days=(a,b)=>Math.max(0,Math.round((new Date(b)-new Date(a))/864e5));
+const cost=i=>n(i.buy)+n(i.costs);
+const profit=i=>n(i.sold)-cost(i)-n(i.sold)*S.set.fee/100;
+const sources=()=>S.set.sources.split(',').map(s=>s.trim()).filter(Boolean);
+const median=a=>{if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
+const cls=v=>v>0?'ok':v<0?'bad':'';
+const TABS=[['panel','Panel'],['analiza','Analiza'],['towary','Towary'],['kalk','Przed zakupem'],['baza','Baza rynku'],['ust','Ustawienia']];
+
+function render(){
+  $('#nav').innerHTML=TABS.map(([k,t])=>`<button class="${k===tab?'on':''}" onclick="go('${k}')">${t}</button>`).join('');
+  $('#view').innerHTML=({panel:vPanel,analiza:vAnaliza,towary:vItems,kalk:vCalc,baza:vBaza,ust:vSet})[tab]();
+  if(tab==='kalk')calc();
+}
+function go(t){tab=t;render()}
+
+function vPanel(){
+  const sold=S.items.filter(i=>i.status==='sprzedane');
+  const stock=S.items.filter(i=>i.status!=='sprzedane');
+  const tp=sold.reduce((a,i)=>a+profit(i),0);
+  const inv=sold.reduce((a,i)=>a+cost(i),0);
+  const roi=inv?tp/inv*100:0;
+  const dd=sold.filter(i=>i.buyDate&&i.soldDate).map(i=>days(i.buyDate,i.soldDate));
+  const avg=dd.length?dd.reduce((a,b)=>a+b,0)/dd.length:0;
+  const now=new Date(),qs=new Date(now.getFullYear(),Math.floor(now.getMonth()/3)*3,1).toISOString().slice(0,10);
+  const qrev=sold.filter(i=>i.soldDate>=qs).reduce((a,i)=>a+n(i.sold),0);
+  const pct=Math.min(100,qrev/S.set.limit*100);
+  const lc=pct>=100?'bad':pct>=80?'warn':'ok';
+  const stale=stock.filter(i=>days(i.buyDate||today(),today())>=S.set.stale);
+  const bySrc=sources().concat([...new Set(S.items.map(i=>i.source))].filter(s=>!sources().includes(s))).map(s=>{
+    const so=sold.filter(i=>i.source===s);return{s,c:so.length,p:so.reduce((a,i)=>a+profit(i),0),k:so.reduce((a,i)=>a+cost(i),0)}
+  }).filter(r=>r.c);
+  return `<div class="card"><div class="grid">
+   <div class="stat"><span class="mu">Zysk łącznie</span><b class="${cls(tp)}">${pln(tp)}</b></div>
+   <div class="stat"><span class="mu">ROI</span><b class="${cls(roi)}">${roi.toFixed(0)}%</b></div>
+   <div class="stat"><span class="mu">Śr. czas sprzedaży</span><b>${avg.toFixed(0)} dni</b></div>
+   <div class="stat"><span class="mu">Zamrożone w towarze</span><b>${pln(stock.reduce((a,i)=>a+cost(i),0))}</b></div></div></div>
+  <div class="card"><h2>Limit działalności nierejestrowanej</h2>
+   <div class="bar"><i style="width:${pct}%;background:var(--${lc})"></i></div>
+   <div class="row"><span class="${lc}">${pln(qrev)}</span><span class="mu">z ${pln(S.set.limit)} w tym kwartale (przychód, nie zysk)</span></div>
+   ${pct>=80?`<p class="${lc}" style="margin:8px 0 0">${pct>=100?'Limit przekroczony. Masz 7 dni na rejestrację firmy.':'Zbliżasz się do limitu. Zaplanuj rejestrację firmy.'}</p>`:''}</div>
+  <div class="card"><h2>Zalega ponad ${S.set.stale} dni (${stale.length})</h2>
+   ${stale.length?stale.map(i=>`<div class="row it"><b>${esc(i.name)}</b><span class="sp"></span><span class="mu">${days(i.buyDate||today(),today())} dni, wystawione za ${pln(n(i.list))}</span></div>`).join(''):'<p class="mu" style="margin:0">Nic nie zalega.</p>'}</div>
+  <div class="card"><h2>Wyniki wg źródła zakupu</h2>
+   ${bySrc.length?`<div class="tw"><table><tr><th>Źródło</th><th>Sprzedane</th><th>Zysk</th><th>ROI</th></tr>${bySrc.map(r=>`<tr><td>${esc(r.s)}</td><td>${r.c}</td><td class="${cls(r.p)}">${pln(r.p)}</td><td>${r.k?(r.p/r.k*100).toFixed(0):0}%</td></tr>`).join('')}</table></div>`:'<p class="mu" style="margin:0">Dodaj i oznacz pierwsze sprzedane rzeczy w zakładce Towary.</p>'}</div>`;
+}
+
+function vAnaliza(){
+  const sold=S.items.filter(i=>i.status==='sprzedane'),stock=S.items.filter(i=>i.status!=='sprzedane');
+  if(sold.length<3)return `<div class="card"><h2>Analiza</h2><p class="mu" style="margin:0">Potrzebuję co najmniej 3 sprzedanych towarów (masz ${sold.length}), żeby wnioski miały sens. Oznaczaj sprzedaż w zakładce Towary.</p></div>`;
+  const rec=sold.map(i=>{const p=profit(i),c=cost(i);return{i,p,c,m:c?p/c*100:0,d:(i.buyDate&&i.soldDate)?days(i.buyDate,i.soldDate):null}});
+  const sum=(a,f)=>a.reduce((x,r)=>x+f(r),0),avg=a=>a.length?sum(a,x=>x)/a.length:0;
+  const grp=f=>{const m={};rec.forEach(r=>{const k=f(r)||'Bez kategorii';(m[k]=m[k]||[]).push(r)});return Object.entries(m).map(([k,a])=>{const p=sum(a,r=>r.p),c=sum(a,r=>r.c),ds=a.filter(r=>r.d!=null).map(r=>r.d);return{k,c:a.length,p,roi:c?p/c*100:0,d:ds.length?avg(ds):null}}).sort((a,b)=>b.roi-a.roi)};
+  const tbl=(rows,h)=>`<div class="tw"><table><tr><th>${h}</th><th>Szt.</th><th>Zysk</th><th>ROI</th><th>Śr. dni</th></tr>${rows.map(r=>`<tr><td>${esc(r.k)}</td><td>${r.c}</td><td class="${cls(r.p)}">${pln(r.p)}</td><td class="${cls(r.roi)}">${r.roi.toFixed(0)}%</td><td>${r.d==null?'–':r.d.toFixed(0)}</td></tr>`).join('')}</table></div>`;
+  const bySrc=grp(r=>r.i.source),byCat=grp(r=>r.i.cat),byPrice=grp(r=>r.c<50?'zakup do 50 zł':r.c<150?'zakup 50-150 zł':r.c<400?'zakup 150-400 zł':'zakup od 400 zł');
+  const ins=[],tp=sum(rec,r=>r.p),win=rec.filter(r=>r.p>0).length,loss=sum(rec.filter(r=>r.p<0),r=>r.p);
+  const bs=bySrc.filter(x=>x.c>=2);
+  if(bs.length>1)ins.push({l:'Źródło',c:'ok',t:`Najlepiej zarabiasz na zakupach z ${bs[0].k} (ROI ${bs[0].roi.toFixed(0)}%), najsłabiej z ${bs[bs.length-1].k} (${bs[bs.length-1].roi.toFixed(0)}%).`});
+  const bc=byCat.filter(x=>x.c>=2&&x.k!=='Bez kategorii');
+  if(bc.length>1)ins.push({l:'Kategoria',c:'ok',t:`Najlepsza kategoria: ${bc[0].k} (ROI ${bc[0].roi.toFixed(0)}%). Najsłabsza: ${bc[bc.length-1].k} (${bc[bc.length-1].roi.toFixed(0)}%).`+(bc[bc.length-1].roi<S.set.margin/2?' Rozważ ograniczenie tej kategorii.':'')});
+  const bp=byPrice.filter(x=>x.c>=2);
+  if(bp.length>1)ins.push({l:'Przedział cenowy',c:'',t:`Najlepszy zwrot dają zakupy w przedziale: ${bp[0].k} (ROI ${bp[0].roi.toFixed(0)}%).`});
+  const fast=rec.filter(r=>r.d!=null&&r.d<=7),slow=rec.filter(r=>r.d!=null&&r.d>14);
+  if(fast.length>=2&&slow.length>=2)ins.push({l:'Tempo',c:'',t:`Rzeczy sprzedane w tydzień mają średnio ${avg(fast.map(r=>r.m)).toFixed(0)}% marży, a te, które leżały ponad 2 tygodnie, ${avg(slow.map(r=>r.m)).toFixed(0)}%.`+(avg(slow.map(r=>r.m))<avg(fast.map(r=>r.m))?' Wolne towary zarabiają mniej na zamrożonym kapitale.':'')});
+  ins.push({l:'Skuteczność',c:win/rec.length>=.8?'ok':win/rec.length>=.6?'warn':'bad',t:`${win} z ${rec.length} sprzedaży z zyskiem (${(win/rec.length*100).toFixed(0)}%).`+(loss?` Straty łącznie: ${pln(-loss)}.`:'')});
+  const cd=sum(rec.filter(r=>r.d!=null),r=>r.c*Math.max(1,r.d));
+  if(cd>0){const dz=sum(rec.filter(r=>r.d!=null),r=>r.p)/cd*100;ins.push({l:'Praca kapitału',c:'',t:`Każde 100 zł w obrocie zarabia średnio ${dz.toFixed(2)} zł dziennie (około ${(dz*30).toFixed(0)} zł na 30 dni przy ciągłym obrocie).`})}
+  const ld=rec.filter(r=>n(r.i.list)>0).map(r=>(n(r.i.list)-n(r.i.sold))/n(r.i.list)*100);
+  if(ld.length>=3){const a=avg(ld);ins.push({l:'Wycena',c:a>15?'warn':'',t:a>=0?`Schodzisz średnio ${a.toFixed(0)}% poniżej ceny wystawienia.`+(a>15?' Wystawiaj bliżej realnej ceny z kalkulatora.':''):`Sprzedajesz średnio ${(-a).toFixed(0)}% powyżej ceny wystawienia. Możesz wystawiać wyżej.`})}
+  const old=stock.filter(i=>days(i.buyDate||today(),today())>=S.set.stale),oc=sum(old,cost),tc=sum(stock,cost);
+  if(tc>0)ins.push({l:'Zamrożony towar',c:oc/tc>.4?'bad':oc/tc>.2?'warn':'ok',t:`${old.length} szt. leży ponad ${S.set.stale} dni i wiąże ${pln(oc)} (${(oc/tc*100).toFixed(0)}% kapitału w towarze).`});
+  const now=new Date(),qs0=new Date(now.getFullYear(),Math.floor(now.getMonth()/3)*3,1),qs=qs0.toISOString().slice(0,10),qd=Math.round((new Date(qs0.getFullYear(),qs0.getMonth()+3,1)-qs0)/864e5),el=days(qs,today())+1;
+  const qrev=sum(sold.filter(i=>i.soldDate>=qs),r=>n(r.sold)),proj=qrev/el*qd;
+  if(qrev>0)ins.push({l:'Prognoza limitu',c:proj>S.set.limit?'bad':proj>S.set.limit*.8?'warn':'ok',t:`Przy obecnym tempie przychód w tym kwartale wyniesie około ${pln(proj)} (limit ${pln(S.set.limit)}).`+(proj>S.set.limit?' Zaplanuj rejestrację działalności.':'')});
+  const mo={};rec.forEach(r=>{const k=(r.i.soldDate||'').slice(0,7);if(k)mo[k]=(mo[k]||0)+r.p});
+  const ms=Object.keys(mo).sort().slice(-6),mx=Math.max(1,...ms.map(k=>Math.abs(mo[k])));
+  const sorted=[...rec].sort((a,b)=>b.p-a.p),row=r=>`<div class="row it"><b>${esc(r.i.name)}</b><span class="tag">${esc(r.i.source)}</span><span class="sp"></span><span class="${cls(r.p)}">${pln(r.p)}</span><span class="mu">${r.m.toFixed(0)}%</span></div>`;
+  return `<div class="card"><div class="grid">
+   <div class="stat"><span class="mu">Zysk z ${rec.length} sprzedaży</span><b class="${cls(tp)}">${pln(tp)}</b></div>
+   <div class="stat"><span class="mu">Średni zysk na sztukę</span><b class="${cls(tp)}">${pln(tp/rec.length)}</b></div>
+   <div class="stat"><span class="mu">Średnia marża</span><b>${avg(rec.map(r=>r.m)).toFixed(0)}%</b></div></div>
+   ${rec.length<10?'<p class="mu" style="margin:10px 0 0">Przy mniej niż 10 sprzedażach wnioski są tylko orientacyjne.</p>':''}</div>
+  <div class="card"><h2>Wnioski z Twoich danych</h2>${ins.map(x=>`<div class="it"><b class="${x.c}">${x.l}:</b> ${x.t}</div>`).join('')}</div>
+  <div class="card"><h2>Zysk wg miesięcy</h2>${ms.map(k=>`<div class="row" style="margin:6px 0"><span class="mu" style="width:62px">${k}</span><div class="bar" style="flex:1;margin:0"><i style="width:${Math.abs(mo[k])/mx*100}%;background:var(--${mo[k]>=0?'ok':'bad'})"></i></div><span class="${cls(mo[k])}" style="width:100px;text-align:right">${pln(mo[k])}</span></div>`).join('')}</div>
+  <div class="card"><h2>Wg źródła zakupu</h2>${tbl(bySrc,'Źródło')}</div>
+  <div class="card"><h2>Wg kategorii</h2>${tbl(byCat,'Kategoria')}${byCat.length===1&&byCat[0].k==='Bez kategorii'?'<p class="mu">Dodawaj kategorię przy nowych zakupach, żeby zobaczyć porównanie.</p>':''}</div>
+  <div class="card"><h2>Wg wielkości zakupu</h2>${tbl(byPrice,'Przedział')}</div>
+  <div class="card"><h2>Najlepsze flipy</h2>${sorted.slice(0,3).map(row).join('')}${sorted[sorted.length-1].p<0?`<h2 style="margin-top:14px">Najgorsze flipy</h2>${sorted.slice(-3).reverse().filter(r=>r.p<0).map(row).join('')}`:''}</div>`;
+}
+
+function vItems(){
+  const list=[...S.items].sort((a,b)=>(a.status==='sprzedane')-(b.status==='sprzedane')||(b.buyDate||'').localeCompare(a.buyDate||''));
+  return `<div class="card"><h2>Dodaj zakup</h2><div class="f">
+   <div><label>Nazwa</label><input id="a_name" placeholder="np. Nike Dunk 42"></div>
+   <div><label>Źródło zakupu</label><select id="a_src">${sources().map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
+   <div><label>Kategoria</label><input id="a_cat" list="cats" placeholder="np. buty"><datalist id="cats">${[...new Set(S.items.map(i=>i.cat).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join('')}</datalist></div>
+   <div><label>Cena zakupu (zł)</label><input id="a_buy" inputmode="decimal"></div>
+   <div><label>Dodatkowe koszty (zł)</label><input id="a_costs" inputmode="decimal" placeholder="wysyłka, naprawa"></div>
+   <div><label>Cena wystawienia (zł)</label><input id="a_list" inputmode="decimal"></div>
+   <div><label>Data zakupu</label><input id="a_date" type="date" value="${today()}"></div>
+   <div><button class="btn" onclick="addItem()">Dodaj</button></div></div></div>
+  <div class="card"><h2>Towary (${list.length})</h2>${list.length?list.map(itemRow).join(''):'<p class="mu" style="margin:0">Brak towarów. Dodaj pierwszy zakup powyżej.</p>'}</div>`;
+}
+function itemRow(i){
+  const sold=i.status==='sprzedane',p=profit(i);
+  return `<div class="it"><div class="row"><b>${esc(i.name)}</b><span class="tag">${esc(i.source)}</span>${i.cat?`<span class="tag">${esc(i.cat)}</span>`:''}<span class="tag">${esc(i.status)}</span><span class="sp"></span>
+   ${sold?`<b class="${cls(p)}">${p>0?'+':''}${pln(p)}</b>`:''}</div>
+   <div class="mu">Zakup ${pln(n(i.buy))}${n(i.costs)?` + koszty ${pln(n(i.costs))}`:''}, wystawione za ${pln(n(i.list))}, kupione ${esc(i.buyDate||'')}${sold&&i.soldDate?`, sprzedane po ${days(i.buyDate||i.soldDate,i.soldDate)} dniach za ${pln(n(i.sold))}`:''}</div>
+   <div class="row" style="margin-top:8px">
+   ${sold?'':`<select style="width:auto" onchange="setStatus('${i.id}',this.value)"><option ${i.status==='kupione'?'selected':''}>kupione</option><option ${i.status==='wystawione'?'selected':''}>wystawione</option></select>
+   <input id="s_${i.id}" inputmode="decimal" placeholder="cena sprzedaży" style="width:140px"><button class="btn s" onclick="sell('${i.id}')">Sprzedano</button>`}
+   <button class="btn g s" onclick="del('${i.id}')">Usuń</button></div></div>`;
+}
+function addItem(){
+  const name=$('#a_name').value.trim();if(!name){$('#a_name').focus();return}
+  S.items.push({id:'i'+Date.now(),name,source:$('#a_src').value,cat:$('#a_cat').value.trim(),buy:n($('#a_buy').value),costs:n($('#a_costs').value),list:n($('#a_list').value),buyDate:$('#a_date').value||today(),status:'kupione',sold:0,soldDate:''});
+  save();render();
+}
+function setStatus(id,v){S.items.find(i=>i.id===id).status=v;save();render()}
+function sell(id){const i=S.items.find(x=>x.id===id),v=n($('#s_'+id).value);if(!v){$('#s_'+id).focus();return}i.sold=v;i.soldDate=today();i.status='sprzedane';save();render()}
+function del(id){if(!confirm('Usunąć ten towar?'))return;S.items=S.items.filter(i=>i.id!==id);save();render()}
+
+function vCalcOld(){
+  return `<div class="card"><h2>Czy ten zakup się opłaca?</h2><div class="f">
+   <div><label>Cena zakupu (zł)</label><input id="c_buy" inputmode="decimal" oninput="calc()"></div>
+   <div><label>Dodatkowe koszty (zł)</label><input id="c_costs" inputmode="decimal" oninput="calc()" placeholder="wysyłka, naprawa"></div></div>
+   <div style="margin-top:10px"><label>Ceny podobnych SPRZEDANYCH rzeczy (oddziel przecinkiem, spacją lub nową linią)</label>
+   <textarea id="c_prices" rows="3" oninput="calc()" placeholder="np. 180 200 190 210 175"></textarea></div></div>
+  <div class="card" id="c_out"></div>`;
+}
+function calcOld(){
+  const buy=n($('#c_buy').value),extra=n($('#c_costs').value);
+  const prices=$('#c_prices').value.split(/[\s;]+/).map(n).filter(x=>x>0);
+  const o=$('#c_out');
+  if(!prices.length){o.innerHTML='<p class="mu" style="margin:0">Wpisz ceny sprzedanych ofert, żeby zobaczyć wynik.</p>';return}
+  const med=median(prices),list=med*1.1,real=med*.95,fee=S.set.fee/100;
+  const net=real*(1-fee),pr=net-buy-extra,c=buy+extra,mg=c?pr/c*100:0;
+  const maxBuy=(net-extra)/(1+S.set.margin/100);
+  const v=mg>=S.set.margin?['Kupuj','ok']:pr>0?['Ryzykowne, marża poniżej celu','warn']:['Odpuść','bad'];
+  const few=prices.length<5?`<p class="warn">Tylko ${prices.length} ${prices.length===1?'cena':'ceny'}. Zbierz co najmniej 5-8 dla wiarygodnej mediany.</p>`:'';
+  o.innerHTML=`<div class="verdict ${v[1]}">${v[0]}</div>
+  <div class="grid">
+   <div class="stat"><span class="mu">Mediana sprzedanych</span><b>${pln(med)}</b></div>
+   <div class="stat"><span class="mu">Wystaw za (+10%)</span><b>${pln(list)}</b></div>
+   <div class="stat"><span class="mu">Realna sprzedaż (-5%)</span><b>${pln(real)}</b></div>
+   <div class="stat"><span class="mu">Zysk</span><b class="${cls(pr)}">${pln(pr)}</b></div>
+   <div class="stat"><span class="mu">Marża</span><b class="${cls(mg)}">${buy?mg.toFixed(0)+'%':'–'}</b></div>
+   <div class="stat"><span class="mu">Max cena zakupu dla celu ${S.set.margin}%</span><b>${pln(Math.max(0,maxBuy))}</b></div></div>
+  <p class="mu">Zakres cen: ${pln(Math.min(...prices))} do ${pln(Math.max(...prices))}. Prowizja platformy: ${S.set.fee}%.</p>${few}`;
+}
+
+let LAST=null,WID=null,PRE='',PRENAME='';
+const CONDS=['nowy','jak nowy','dobry','dostateczny','uszkodzony'];
+const curW=()=>S.watch.find(x=>x.id===WID);
+function wStats(w){
+  const o=w.obs||[],sold=o.filter(x=>x.status==='sprzedane'&&n(x.final)>0),gone=o.filter(x=>x.status==='zniknęło'),act=o.filter(x=>x.status==='aktywne');
+  const ds=sold.filter(x=>x.listed&&x.ended).map(x=>days(x.listed,x.ended));
+  const dc=sold.filter(x=>n(x.ask)>0).map(x=>(n(x.ask)-n(x.final))/n(x.ask)*100);
+  const fin=sold.length+gone.length,sp=sold.map(x=>n(x.final));
+  const srt=[...sold].sort((a,b)=>(a.ended||'').localeCompare(b.ended||''));
+  let trend=null;
+  if(srt.length>=4){const h=srt.length>>1,a=median(srt.slice(0,h).map(x=>n(x.final))),b=median(srt.slice(srt.length-h).map(x=>n(x.final)));trend=a?(b-a)/a*100:0}
+  const av=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+  return{n:o.length,sold,gone,act,sp,med:median(sp),avgD:av(ds),disc:av(dc),st:fin?sold.length/fin*100:null,trend,min:sp.length?Math.min(...sp):0,max:sp.length?Math.max(...sp):0};
+}
+function vBaza(){
+  if(WID){const w=curW();if(w)return vWatch(w);WID=null}
+  const W=[...S.watch].sort((a,b)=>a.name.localeCompare(b.name,'pl'));
+  return `<div class='card'><h2>Dodaj przedmiot do bazy</h2><div class='f'>
+   <div><label>Nazwa przedmiotu</label><input id='w_name' placeholder='np. Nike Dunk Low Panda 42'></div>
+   <div><label>Kategoria</label><input id='w_cat' placeholder='np. buty'></div>
+   <div><label>Notatka (opcjonalnie)</label><input id='w_note' placeholder='np. ma dużo podróbek'></div>
+   <div><button class='btn' onclick='addProd()'>Dodaj do bazy</button></div></div></div>
+  <div class='card'><h2>Baza rynku (${W.length})</h2>${W.length?W.map(w=>{const s=wStats(w);return `<div class='it'><div class='row'><b>${esc(w.name)}</b>${w.cat?`<span class='tag'>${esc(w.cat)}</span>`:''}<span class='sp'></span><button class='btn s' data-i='${w.id}' onclick='openW(this.dataset.i)'>Otwórz</button></div><div class='mu'>${s.n} obserwacji, ${s.sold.length} sprzedanych${s.sold.length?`, mediana sprzedaży ${pln(s.med)}`:''}${s.avgD!=null?`, śr. ${s.avgD.toFixed(0)} dni do sprzedaży`:''}</div></div>`}).join(''):"<p class='mu' style='margin:0'>Baza jest pusta. Dodaj przedmiot, który chcesz obserwować, a potem zapisuj kolejne oferty z OLX, Vinted czy Kleinanzeigen.</p>"}</div>`;
+}
+function vWatch(w){
+  const s=wStats(w),stat=(l,v,c)=>`<div class='stat'><span class='mu'>${l}</span><b class='${c||''}'>${v}</b></div>`;
+  const dem=s.avgD==null?['brak danych','']:s.avgD<=7?['wysoki','ok']:s.avgD<=21?['średni','warn']:['niski','bad'];
+  const tip=s.sold.length<3?`Masz ${s.sold.length} sprzedanych obserwacji. Zbierz ich co najmniej 5-8, żeby oceny były wiarygodne.`:`Typowa cena sprzedaży to ${pln(s.med)} (zakres ${pln(s.min)} do ${pln(s.max)}). Rozsądna cena wystawienia: ${pln(s.med*1.1)}.`+(s.disc!=null?` Kupujący schodzą średnio ${s.disc.toFixed(0)}% z ceny wywoławczej.`:'');
+  const gt=(f,h)=>{const m={};w.obs.forEach(x=>{const k=f(x)||'brak';(m[k]=m[k]||[]).push(x)});
+   return `<div class='tw'><table><tr><th>${h}</th><th>Obs.</th><th>Mediana wyst.</th><th>Mediana sprzed.</th><th>Śr. dni</th></tr>${Object.entries(m).map(([k,a])=>{const so=a.filter(x=>x.status==='sprzedane'&&n(x.final)>0),d=so.filter(x=>x.listed&&x.ended).map(x=>days(x.listed,x.ended)),ak=a.map(x=>n(x.ask)).filter(x=>x>0);return `<tr><td>${esc(k)}</td><td>${a.length}</td><td>${ak.length?pln(median(ak)):'–'}</td><td>${so.length?pln(median(so.map(x=>n(x.final)))):'–'}</td><td>${d.length?(d.reduce((p,q)=>p+q,0)/d.length).toFixed(0):'–'}</td></tr>`}).join('')}</table></div>`};
+  const row=x=>`<div class='it'><div class='row'><b>${pln(n(x.ask))}</b><span class='tag'>${esc(x.platform)}</span><span class='tag'>${esc(x.cond)}</span><span class='tag'>${esc(x.status)}</span><span class='sp'></span>${x.status==='sprzedane'?`<b class='ok'>sprzedane za ${pln(n(x.final))}</b>`:''}</div>
+   <div class='mu'>wystawione ${esc(x.listed||'(brak daty)')}${x.ended?`, zakończone ${esc(x.ended)}`:''}${x.listed&&x.ended?` (${days(x.listed,x.ended)} dni)`:x.status==='aktywne'&&x.listed?` (${days(x.listed,today())} dni na rynku)`:''}${x.note?`, ${esc(x.note)}`:''}</div>
+   <div class='row' style='margin-top:8px'>${x.status==='aktywne'?`<input id='f_${x.id}' inputmode='decimal' placeholder='cena końcowa' style='width:130px'><button class='btn s' data-i='${x.id}' onclick='obsSold(this.dataset.i)'>Sprzedane</button><button class='btn g s' data-i='${x.id}' onclick='obsGone(this.dataset.i)'>Zniknęło</button>`:''}<button class='btn g s' data-i='${x.id}' onclick='obsDel(this.dataset.i)'>Usuń</button></div></div>`;
+  const pl=[...new Set(sources().concat(['Allegro','Inne']))],obs=[...w.obs].sort((a,b)=>(b.listed||'').localeCompare(a.listed||''));
+  return `<div class='card'><div class='row'><button class='btn g s' onclick='backW()'>Wróć do bazy</button><h2 style='margin:0'>${esc(w.name)}</h2>${w.cat?`<span class='tag'>${esc(w.cat)}</span>`:''}<span class='sp'></span><button class='btn g s' data-i='${w.id}' onclick='delW(this.dataset.i)'>Usuń przedmiot</button></div>${w.note?`<p class='mu' style='margin:8px 0 0'>${esc(w.note)}</p>`:''}</div>
+  <div class='card'><h2>Wiedza o przedmiocie</h2><div class='grid'>
+   ${stat('Obserwacje',`${s.n} (aktywne: ${s.act.length})`)}
+   ${stat('Mediana sprzedaży',s.sold.length?pln(s.med):'–')}
+   ${stat('Zakres sprzedaży',s.sold.length?`${pln(s.min)} do ${pln(s.max)}`:'–')}
+   ${stat('Śr. czas do sprzedaży',s.avgD==null?'–':s.avgD.toFixed(0)+' dni')}
+   ${stat('Skuteczność sprzedaży',s.st==null?'–':s.st.toFixed(0)+'%')}
+   ${stat('Popyt',dem[0],dem[1])}
+   ${stat('Trend cen',s.trend==null?'min. 4 sprzedane':(s.trend>0?'+':'')+s.trend.toFixed(0)+'%')}</div>
+   <p style='margin:12px 0 0'>${tip}</p>
+   <div class='row' style='margin-top:10px'><button class='btn' onclick='useCalc()' ${s.sp.length?'':'disabled'}>Użyj cen w zakładce Przed zakupem</button></div></div>
+  ${w.obs.length?`<div class='card'><h2>Wg stanu</h2>${gt(x=>x.cond,'Stan')}</div><div class='card'><h2>Wg platformy</h2>${gt(x=>x.platform,'Platforma')}</div>`:''}
+  <div class='card'><h2>Dodaj obserwację</h2><div class='f'>
+   <div><label>Platforma</label><select id='o_pl'>${pl.map(p=>`<option>${esc(p)}</option>`).join('')}</select></div>
+   <div><label>Stan</label><select id='o_cond'>${CONDS.map(c=>`<option ${c==='dobry'?'selected':''}>${c}</option>`).join('')}</select></div>
+   <div><label>Cena wystawienia (zł)</label><input id='o_ask' inputmode='decimal'></div>
+   <div><label>Data wystawienia</label><input id='o_list' type='date' value='${today()}'></div>
+   <div><label>Cena końcowa, jeśli sprzedane (zł)</label><input id='o_fin' inputmode='decimal'></div>
+   <div><label>Data sprzedaży</label><input id='o_end' type='date'></div>
+   <div><label>Notatka lub link</label><input id='o_note' placeholder='np. komplet z pudełkiem'></div>
+   <div><button class='btn' onclick='addObs()'>Zapisz obserwację</button></div></div></div>
+  <div class='card'><h2>Obserwacje (${obs.length})</h2>${obs.length?obs.map(row).join(''):"<p class='mu' style='margin:0'>Brak obserwacji. Dodaj pierwszą ofertę powyżej.</p>"}</div>`;
+}
+function addProd(){const nm=$('#w_name').value.trim();if(!nm){$('#w_name').focus();return}const w={id:'w'+Date.now(),name:nm,cat:$('#w_cat').value.trim(),note:$('#w_note').value.trim(),obs:[]};S.watch.push(w);WID=w.id;save();render()}
+function openW(id){WID=id;render()}
+function backW(){WID=null;render()}
+function delW(id){if(!confirm('Usunąć przedmiot i wszystkie jego obserwacje?'))return;S.watch=S.watch.filter(w=>w.id!==id);WID=null;save();render()}
+function addObs(){const w=curW(),ask=n($('#o_ask').value);if(!ask){$('#o_ask').focus();return}const fin=n($('#o_fin').value);w.obs.push({id:'o'+Date.now(),platform:$('#o_pl').value,cond:$('#o_cond').value,ask,listed:$('#o_list').value,final:fin,ended:fin?($('#o_end').value||today()):'',status:fin?'sprzedane':'aktywne',note:$('#o_note').value.trim()});save();render()}
+function obsSold(id){const x=curW().obs.find(o=>o.id===id),v=n($('#f_'+id).value);if(!v){$('#f_'+id).focus();return}x.final=v;x.ended=today();x.status='sprzedane';save();render()}
+function obsGone(id){const x=curW().obs.find(o=>o.id===id);x.status='zniknęło';x.ended=today();save();render()}
+function obsDel(id){const w=curW();w.obs=w.obs.filter(o=>o.id!==id);save();render()}
+function useCalc(){const w=curW();PRE=wStats(w).sp.join(' ');PRENAME=w.name;tab='kalk';render();PRE='';PRENAME=''}
+let LAST2=null;
+function vCalc(){
+  const cats=[...new Set(S.items.map(i=>i.cat).filter(Boolean))];
+  const ck=(id,t)=>`<label style='display:flex;gap:8px;align-items:center;color:var(--tx);font-size:14px;margin:6px 0'><input type='checkbox' id='${id}' onchange='calc()' style='width:auto'> ${t}</label>`;
+  const num=(id,l,ph)=>`<div><label>${l}</label><input id='${id}' inputmode='decimal' oninput='calc()' placeholder='${ph||''}'></div>`;
+  return `<div class='card'><h2>Zakup</h2><div class='f'>
+   <div><label>Nazwa (opcjonalnie)</label><input id='c_name' placeholder='np. Makita DHP483' value='${esc(PRENAME)}'></div>
+   <div><label>Kategoria</label><input id='c_cat' list='ccats' oninput='calc()'><datalist id='ccats'>${cats.map(c=>`<option value='${esc(c)}'>`).join('')}</datalist></div>
+   <div><label>Źródło</label><select id='c_src' onchange='calc()'>${sources().map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
+   <div><label>Kupujesz</label><select id='c_cur' onchange='calc()'><option value='pln'>w Polsce (zł)</option><option value='eur'>w Niemczech (€)</option></select></div>
+   ${num('c_buy','Cena zakupu (zł lub € wg wyboru)')}
+   <div><label>Kurs EUR (zł), gdy kupujesz w €</label><input id='c_kurs' inputmode='decimal' value='${S.set.eur}' oninput='calc()'></div>
+   ${num('c_ship','Wysyłka lub dojazd (zł)')}
+   ${num('c_fwd','Pośrednik, opłaty (zł)')}
+   ${num('c_fix','Naprawa, czyszczenie (zł)')}</div>
+   <p class='mu' style='margin:10px 0 0'>Kurs sprawdź aktualny, wpisana wartość to tylko punkt startowy.</p></div>
+  <div class='card'><h2>Sprzedaż</h2>
+   <label>Ceny podobnych SPRZEDANYCH rzeczy (oddziel spacją lub nową linią)</label>
+   <textarea id='c_prices' rows='3' oninput='calc()' placeholder='np. 180 200 190 210 175'>${esc(PRE)}</textarea>
+   <div class='f' style='margin-top:10px'>${num('c_out','Wysyłka do kupującego na Twój koszt (zł)')}
+   <div><label>Jak szybko schodzą podobne</label><select id='c_speed' onchange='calc()'><option value='5'>do tygodnia</option><option value='14' selected>1-3 tygodnie</option><option value='30'>ponad 3 tygodnie</option></select></div></div></div>
+  <div class='card'><h2>Kontrola ryzyka</h2>
+   ${ck('k1','Mam pewność, że to oryginał (numer seryjny, metki, zdjęcia)')}
+   ${ck('k2','Zdjęcia i opis pokazują wszystkie wady')}
+   ${ck('k3','Komplet: pudełko, akcesoria, ładowarka')}
+   ${ck('k4','Sprawdziłem, że podobne rzeczy faktycznie się sprzedają')}
+   ${ck('k5','Płatność z ochroną kupującego lub odbiór osobisty')}</div>
+  <div class='card' id='c_res'></div>`;
+}
+function calc(){
+  const g=id=>$('#'+id),eur=g('c_cur').value==='eur',o=g('c_res');
+  const kurs=n(g('c_kurs').value)||S.set.eur;if(n(g('c_kurs').value)&&kurs!==S.set.eur){S.set.eur=kurs;save()}
+  const buy=n(g('c_buy').value)*(eur?kurs:1),extra=n(g('c_ship').value)+n(g('c_fwd').value)+n(g('c_fix').value),c=buy+extra;
+  const pr=g('c_prices').value.split(/[\s;]+/).map(n).filter(x=>x>0).sort((a,b)=>a-b);
+  if(!pr.length||!buy){o.innerHTML="<p class='mu' style='margin:0'>Wpisz cenę zakupu i ceny sprzedanych podobnych rzeczy, żeby zobaczyć ocenę.</p>";return}
+  const q=p=>{const k=(pr.length-1)*p,f=Math.floor(k),h=Math.min(f+1,pr.length-1);return pr[f]+(pr[h]-pr[f])*(k-f)};
+  const fee=S.set.fee/100,out=n(g('c_out').value),sd=+g('c_speed').value;
+  const sc=[['Pesymistycznie',q(.25)*.95],['Realnie',q(.5)*.95],['Optymistycznie',q(.75)]].map(([l,p])=>{const pf=p*(1-fee)-out-c;return{l,p,pf,m:c?pf/c*100:0}});
+  const P=sc[0],R=sc[1],med=q(.5);
+  const maxBuy=Math.max(0,(R.p*(1-fee)-out-extra)/(1+S.set.margin/100)),be=(c+out)/(1-fee);
+  const checks=['k1','k2','k3','k4','k5'].filter(k=>g(k).checked).length;
+  const why=[];
+  if(P.pf<0)why.push(`w pesymistycznym scenariuszu tracisz ${pln(-P.pf)}`);
+  if(checks<3)why.push(`zaznaczono ${checks} z 5 punktów kontroli ryzyka`);
+  if(sd>=30)why.push('wolna rotacja zamraża kapitał');
+  if(pr.length<5)why.push(`tylko ${pr.length} cen do porównania, zbierz 5-8`);
+  let v;
+  if(R.m>=S.set.margin&&!why.length)v=['Kupuj','ok'];
+  else if(R.m>=S.set.margin)v=['Kupuj ostrożnie','warn'];
+  else if(R.pf>0)v=['Negocjuj cenę','warn'];
+  else v=['Odpuść','bad'];
+  const mx=pln(maxBuy)+(eur?` (${(maxBuy/kurs).toFixed(0)} €)`:'');
+  const txt=R.m>=S.set.margin?(why.length?`Marża realna ${R.m.toFixed(0)}% spełnia cel, ale uwaga: ${why.join('; ')}.`:`Marża realna ${R.m.toFixed(0)}% przekracza cel ${S.set.margin}%, także w pesymistycznym scenariuszu nie tracisz.`):`Marża realna ${R.m.toFixed(0)}% przy celu ${S.set.margin}%. Aby go osiągnąć, kup za maksymalnie ${mx}.`+(why.length?` Dodatkowo: ${why.join('; ')}.`:'');
+  const done=S.items.filter(i=>i.status==='sprzedane'),cat=g('c_cat').value.trim(),src=g('c_src').value;
+  const hs=(a,l)=>{if(a.length<2)return '';const p=a.reduce((x,i)=>x+profit(i),0),k=a.reduce((x,i)=>x+cost(i),0),d=a.filter(i=>i.buyDate&&i.soldDate).map(i=>days(i.buyDate,i.soldDate)),r=k?p/k*100:0;return `<div class='it'>W Twojej historii (${esc(l)}, ${a.length} szt.): ROI <b class='${r>=S.set.margin?'ok':'warn'}'>${r.toFixed(0)}%</b>${d.length?`, średnio ${(d.reduce((x,y)=>x+y,0)/d.length).toFixed(0)} dni do sprzedaży`:''}.</div>`};
+  const hist=(cat?hs(done.filter(i=>i.cat===cat),cat):'')+hs(done.filter(i=>i.source===src),src);
+  LAST={buy,extra,list:med*1.1,src,cat};
+  o.innerHTML=`<div class='verdict ${v[1]}'>${v[0]}</div><p style='margin:0 0 12px'>${txt}</p>
+  <div class='tw'><table><tr><th>Scenariusz</th><th>Cena sprzedaży</th><th>Zysk</th><th>Marża</th></tr>${sc.map(s=>`<tr><td>${s.l}</td><td>${pln(s.p)}</td><td class='${cls(s.pf)}'>${pln(s.pf)}</td><td class='${cls(s.m)}'>${s.m.toFixed(0)}%</td></tr>`).join('')}</table></div>
+  <div class='grid' style='margin-top:12px'>
+   <div class='stat'><span class='mu'>Koszt całkowity</span><b>${pln(c)}</b></div>
+   <div class='stat'><span class='mu'>Próg opłacalności (cena sprzedaży)</span><b>${pln(be)}</b></div>
+   <div class='stat'><span class='mu'>Maks. cena zakupu dla celu ${S.set.margin}%</span><b>${mx}</b></div>
+   <div class='stat'><span class='mu'>Wystaw za (+10% na negocjacje)</span><b>${pln(med*1.1)}</b></div>
+   <div class='stat'><span class='mu'>Zysk na dzień (realnie, ${sd} dni)</span><b class='${cls(R.pf)}'>${pln(R.pf/sd)}</b></div></div>
+  <p class='mu'>Pesymistycznie: 25. percentyl cen sprzedanych minus 5% na targowanie. Realnie: mediana minus 5%. Optymistycznie: 75. percentyl. Prowizja platformy: ${S.set.fee}%.</p>${hist}
+  <div class='row' style='margin-top:12px'><button class='btn' onclick='addFromCheck()'>Kupiłem. Dodaj do towarów</button><span class='mu'>Wymaga wpisanej nazwy.</span></div>`;
+}
+function addFromCheck(){
+  const nm=$('#c_name').value.trim();if(!nm){$('#c_name').focus();return}
+  if(!LAST)return;
+  S.items.push({id:'i'+Date.now(),name:nm,source:LAST.src,cat:LAST.cat,buy:Math.round(LAST.buy*100)/100,costs:Math.round(LAST.extra*100)/100,list:Math.round(LAST.list),buyDate:today(),status:'kupione',sold:0,soldDate:''});
+  save();go('towary');
+}
+function vSet(){
+  const s=S.set;
+  return `<div class="card"><h2>Twoje zasady</h2><div class="f">
+   <div><label>Kwartalny limit przychodu (zł)</label><input id="s_limit" inputmode="decimal" value="${s.limit}"></div>
+   <div><label>Docelowa marża (%)</label><input id="s_margin" inputmode="decimal" value="${s.margin}"></div>
+   <div><label>Alarm zalegania (dni)</label><input id="s_stale" inputmode="decimal" value="${s.stale}"></div>
+   <div><label>Prowizja platformy (%)</label><input id="s_fee" inputmode="decimal" value="${s.fee}"></div></div>
+   <div style="margin-top:10px"><label>Źródła zakupu (po przecinku)</label><input id="s_sources" value="${esc(s.sources)}"></div>
+   <div class="row" style="margin-top:12px"><button class="btn" onclick="saveSet()">Zapisz ustawienia</button><span class="mu" id="s_ok"></span></div></div>
+  <div class="card"><h2>Kopia zapasowa</h2>
+   <p class="mu" style="margin-top:0">Dane są zapisane tylko w tej przeglądarce na tym urządzeniu. Skopiuj poniższy tekst i zachowaj go, żeby nie stracić historii lub przenieść ją na inne urządzenie.</p>
+   <textarea id="s_json" rows="4">${esc(JSON.stringify(S))}</textarea>
+   <div class="row" style="margin-top:10px"><button class="btn g" onclick="$('#s_json').select();try{document.execCommand('copy')}catch(e){}">Zaznacz i skopiuj</button><button class="btn g" onclick="imp()">Wczytaj z pola</button></div></div>`;
+}
+function saveSet(){
+  S.set={eur:S.set.eur||DEF.eur,limit:n($('#s_limit').value)||DEF.limit,margin:n($('#s_margin').value),stale:n($('#s_stale').value)||21,fee:n($('#s_fee').value),sources:$('#s_sources').value||DEF.sources};
+  save();$('#s_ok').textContent='Zapisano.';
+}
+function imp(){
+  try{const p=JSON.parse($('#s_json').value);if(!Array.isArray(p.items))throw 0;if(!confirm('Zastąpić obecne dane wczytanymi?'))return;S.items=p.items;S.watch=p.watch||[];S.set={...DEF,...(p.set||{})};save();render()}
+  catch(e){alert('Nieprawidłowe dane. Wklej cały tekst kopii zapasowej.')}
+}
+render();
+</script>
+</body>
+</html>
